@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { getConfig, updateConfig } from '@/api/config'
+import { buildFromLink, profileStatus } from '@/api/onboarding'
 import Spinner from '@/components/ui/Spinner'
 import toast from 'react-hot-toast'
-import { Save, Edit3, Eye } from 'lucide-react'
+import { Save, Edit3, Eye, Globe, Link2, CheckCircle } from 'lucide-react'
 
 export default function ProfilePanel() {
   const [profileMd, setProfileMd] = useState('')
@@ -10,13 +11,70 @@ export default function ProfilePanel() {
   const [saving, setSaving]       = useState(false)
   const [editMode, setEditMode]   = useState(false)
   const [draft, setDraft]         = useState('')
+  const [showLinkBuilder, setShowLinkBuilder] = useState(false)
+  const [linkInput, setLinkInput] = useState('')
+  const [building, setBuilding]   = useState(false)
+  const [buildStage, setBuildStage] = useState('')
+  const [buildDetail, setBuildDetail] = useState('')
+  const pollRef = useRef(null)
 
   useEffect(() => {
+    loadConfig()
+    return () => { if (pollRef.current) clearTimeout(pollRef.current) }
+  }, [])
+
+  const loadConfig = () => {
     getConfig()
       .then(r => { setProfileMd(r.data.profile_md); setDraft(r.data.profile_md) })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [])
+  }
+
+  const handleBuildFromLink = async () => {
+    if (!linkInput.trim() || !linkInput.toLowerCase().includes('indiamart.com')) {
+      toast.error('Enter a valid IndiaMART URL')
+      return
+    }
+    setBuilding(true)
+    setBuildStage('')
+    setBuildDetail('')
+    try {
+      await buildFromLink(linkInput.trim())
+      toast.success('Profile build started!')
+      pollBuild()
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Build failed')
+      setBuilding(false)
+    }
+  }
+
+  const pollBuild = () => {
+    let attempts = 0
+    const poll = async () => {
+      try {
+        const res = await profileStatus()
+        const { status, stage, stage_detail } = res.data
+        if (stage) setBuildStage(stage)
+        if (stage_detail) setBuildDetail(stage_detail)
+        if (status === 'complete') {
+          setBuilding(false)
+          setShowLinkBuilder(false)
+          setLinkInput('')
+          toast.success('Profile built successfully!')
+          loadConfig()
+        } else if (status === 'failed') {
+          setBuilding(false)
+          toast.error('Build failed — try a different link')
+        } else if (attempts < 60) {
+          attempts++
+          pollRef.current = setTimeout(poll, 2000)
+        } else {
+          setBuilding(false)
+        }
+      } catch { /* ignore */ }
+    }
+    poll()
+  }
 
   const handleSave = async () => {
     setSaving(true)
@@ -54,6 +112,12 @@ export default function ProfilePanel() {
           </p>
         </div>
         <div style={{ display:'flex', gap:8 }}>
+          {!editMode && !building && (
+            <button onClick={() => setShowLinkBuilder(!showLinkBuilder)} className="btn-ghost"
+              style={{ fontSize:11, padding:'7px 14px', display:'flex', alignItems:'center', gap:6 }}>
+              <Link2 size={13}/> Build from Link
+            </button>
+          )}
           {editMode ? (
             <>
               <button onClick={() => setEditMode(false)} className="btn-ghost" style={{ fontSize:11, padding:'7px 14px' }}>Cancel</button>
@@ -73,6 +137,48 @@ export default function ProfilePanel() {
 
       <div style={{ flex:1, overflowY:'auto', padding:'20px 28px' }}>
         {loading && <div style={{ display:'flex', justifyContent:'center', padding:48 }}><Spinner size={24} color="rgba(255,255,255,0.3)"/></div>}
+
+        {/* Build from Link panel */}
+        {(showLinkBuilder || building) && !loading && (
+          <div style={{ maxWidth:680, marginBottom:20, background:'rgba(59,130,246,0.06)', border:'1px solid rgba(59,130,246,0.2)', borderRadius:12, padding:16 }}>
+            {building ? (
+              <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                <Spinner size={16} />
+                <div>
+                  <p style={{ fontSize:12, fontWeight:700, color:'#fff' }}>
+                    {buildStage ? `${buildStage.charAt(0).toUpperCase() + buildStage.slice(1)}...` : 'Starting pipeline...'}
+                  </p>
+                  <p style={{ fontSize:11, color:'rgba(255,255,255,0.5)', marginTop:2 }}>{buildDetail || 'Multi-agent extraction in progress'}</p>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+                  <Globe size={14} className="text-blue-400" />
+                  <p style={{ fontSize:12, fontWeight:700, color:'#fff' }}>Build Profile from IndiaMART</p>
+                </div>
+                <p style={{ fontSize:11, color:'rgba(255,255,255,0.4)', marginBottom:10 }}>
+                  Paste your IndiaMART seller URL. AI will extract products, pricing, and capabilities automatically.
+                </p>
+                <div style={{ display:'flex', gap:8 }}>
+                  <input
+                    value={linkInput}
+                    onChange={e => setLinkInput(e.target.value)}
+                    placeholder="https://www.indiamart.com/your-business/"
+                    style={{
+                      flex:1, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.12)',
+                      borderRadius:8, color:'#fff', fontSize:12, padding:'8px 12px', outline:'none'
+                    }}
+                  />
+                  <button onClick={handleBuildFromLink} className="btn-primary"
+                    style={{ width:'auto', fontSize:11, padding:'8px 16px', whiteSpace:'nowrap' }}>
+                    Build
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {!loading && (
           <div style={{ maxWidth:680 }}>
@@ -102,11 +208,16 @@ export default function ProfilePanel() {
                   : <div style={{ textAlign:'center', padding:'48px 0' }}>
                       <p style={{ color:'rgba(255,255,255,0.3)', fontSize:13 }}>No profile yet.</p>
                       <p style={{ color:'rgba(255,255,255,0.2)', fontSize:11, marginTop:6 }}>
-                        Complete onboarding with business links to auto-generate your profile.
+                        Build your profile from IndiaMART or write it manually.
                       </p>
-                      <button onClick={() => setEditMode(true)} className="btn-primary" style={{ width:'auto', padding:'10px 24px', marginTop:16 }}>
-                        + Write Profile Manually
-                      </button>
+                      <div style={{ display:'flex', gap:10, justifyContent:'center', marginTop:16 }}>
+                        <button onClick={() => setShowLinkBuilder(true)} className="btn-primary" style={{ width:'auto', padding:'10px 24px', display:'flex', alignItems:'center', gap:6 }}>
+                          <Globe size={14}/> Build from IndiaMART
+                        </button>
+                        <button onClick={() => setEditMode(true)} className="btn-ghost" style={{ padding:'10px 24px' }}>
+                          + Write Manually
+                        </button>
+                      </div>
                     </div>
                 }
               </div>

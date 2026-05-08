@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { verifyGST, completeOnboard, profileStatus } from '../../api/onboarding'
 import { useAuthStore } from '../../store/authStore'
@@ -24,6 +24,7 @@ export default function OnboardingPage() {
   const [gstData, setGstData] = useState(null)
   const [link, setLink] = useState('')
   const [loading, setLoading] = useState(false)
+  const [initialLoading, setInitialLoading] = useState(true)
   const [buildStatus, setBuildStatus] = useState('building')
   const [currentStage, setCurrentStage] = useState('')
   const [stageDetail, setStageDetail] = useState('')
@@ -32,6 +33,27 @@ export default function OnboardingPage() {
   const navigate = useNavigate()
   const setOnboarded = useAuthStore(s => s.setOnboarded)
   const prevStageRef = useRef('')
+
+  useEffect(() => {
+    profileStatus()
+      .then(res => {
+        const { status, stage, stage_detail } = res.data
+        if (status === 'building') {
+          setStep('building')
+          if (stage) {
+            setCurrentStage(stage)
+            prevStageRef.current = stage
+          }
+          if (stage_detail) setStageDetail(stage_detail)
+          pollBuildStatus()
+        } else if (status === 'complete') {
+          setOnboarded()
+          navigate('/workspace', { replace: true })
+        }
+      })
+      .catch(() => {})
+      .finally(() => setInitialLoading(false))
+  }, [])
 
   const handleVerifyGST = async () => {
     if (gstin.length < 15) { toast.error('Enter valid 15-character GSTIN'); return }
@@ -71,7 +93,7 @@ export default function OnboardingPage() {
         pollBuildStatus()
       } else {
         setOnboarded()
-        navigate('/home')
+        navigate('/workspace', { replace: true })
       }
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Onboarding failed')
@@ -100,12 +122,14 @@ export default function OnboardingPage() {
           setCurrentStage('complete')
           setCompletedStages(PIPELINE_STAGES.map(s => s.key))
           setOnboarded()
-          setTimeout(() => navigate('/home'), 2000)
+          setTimeout(() => navigate('/workspace', { replace: true }), 2000)
         } else if (status === 'failed') {
           setBuildStatus('failed')
-        } else if (attempts < 40) {
+        } else if (attempts < 90) {
           attempts++
           setTimeout(poll, 2000)
+        } else {
+          setBuildStatus('failed')
         }
       } catch { /* ignore */ }
     }
@@ -116,6 +140,14 @@ export default function OnboardingPage() {
     if (completedStages.includes(stageKey)) return 'done'
     if (currentStage === stageKey) return 'active'
     return 'pending'
+  }
+
+  if (initialLoading) {
+    return (
+      <div className="bg-bisdom min-h-screen flex items-center justify-center">
+        <Spinner size={24} />
+      </div>
+    )
   }
 
   return (
