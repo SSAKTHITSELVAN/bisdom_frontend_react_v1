@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { chatRequirement, confirmRequirement } from '../../api/requirements'
 import Spinner from '../ui/Spinner'
@@ -11,6 +11,32 @@ const SUGGESTIONS = [
   '200 cotton t-shirts, black, 180GSM, under ₹180/piece',
   '50 industrial motors, 2HP, 3-phase, Coimbatore',
 ]
+
+function getQuickReplies(lastAiMsg) {
+  if (!lastAiMsg) return []
+  const lower = lastAiMsg.toLowerCase()
+  if (lower.includes('budget') || lower.includes('price') || lower.includes('willing to pay'))
+    return ['Under ₹100/piece', 'Under ₹200/piece', 'Under ₹500/piece', 'No budget limit']
+  if (lower.includes('material') || lower.includes('fabric'))
+    return ['Cotton', 'Polyester', 'Cotton-poly blend', 'No preference']
+  if (lower.includes('color') || lower.includes('colour'))
+    return ['White', 'Black', 'Navy blue', 'No preference']
+  if (lower.includes('size'))
+    return ['S, M, L, XL', 'Free size', 'Mixed sizes', 'Not sure']
+  if (lower.includes('deliver') || lower.includes('location') || lower.includes('city') || lower.includes('where'))
+    return ['Mumbai', 'Delhi', 'Chennai', 'Bangalore']
+  if (lower.includes('how soon') || lower.includes('deadline') || lower.includes('days') || lower.includes('when'))
+    return ['7 days', '15 days', '30 days', 'No rush']
+  if (lower.includes('one-time') || lower.includes('recurring') || lower.includes('order type'))
+    return ['One-time', 'Monthly recurring', 'Quarterly']
+  if (lower.includes('packaging'))
+    return ['Standard', 'Custom branded', 'Bulk packaging', 'No preference']
+  if (lower.includes('confirm') || lower.includes('look correct') || lower.includes('everything look'))
+    return ['Yes, confirm', 'Change budget', 'Change quantity']
+  if (lower.includes('anything else') || lower.includes('additional'))
+    return ['That\'s all, post it', 'Need GST invoice', 'Need sample first']
+  return []
+}
 
 function TypingIndicator() {
   return (
@@ -50,6 +76,12 @@ export default function HomePage() {
   const inputRef = useRef(null)
   const navigate = useNavigate()
 
+  const quickReplies = useMemo(() => {
+    if (loading || isComplete) return []
+    const lastAi = [...messages].reverse().find(m => m.role === 'ai')
+    return getQuickReplies(lastAi?.content)
+  }, [messages, loading, isComplete])
+
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}) },[messages,loading])
 
   const sendMessage = async (text) => {
@@ -64,7 +96,8 @@ export default function HomePage() {
       setRequirementId(requirement_id); setIsComplete(is_complete)
       setMessages(prev=>[...prev,{role:'ai',content:ai_response}])
       if(is_complete&&requirement_summary){
-        setMessages(prev=>[...prev,{role:'system',content:`📋 ${requirement_summary.product} · ${requirement_summary.quantity} ${requirement_summary.quantity_unit||'units'} · ₹${requirement_summary.budget_max} max`}])
+        const budgetText = requirement_summary.budget_max ? `₹${requirement_summary.budget_max} max` : 'Budget flexible'
+        setMessages(prev=>[...prev,{role:'system',content:`📋 ${requirement_summary.product} · ${requirement_summary.quantity} ${requirement_summary.quantity_unit||'units'} · ${budgetText}`}])
       }
     } catch {
       toast.error('Something went wrong')
@@ -132,6 +165,21 @@ export default function HomePage() {
                   <TypingIndicator/>
                 </div>
               )}
+              {quickReplies.length > 0 && !loading && (
+                <div className="flex flex-wrap gap-2 mt-2 mb-2 animate-fade-in">
+                  {quickReplies.map((r, i) => (
+                    <button key={i} onClick={() => sendMessage(r)}
+                      className="text-xs font-medium text-blue-400 hover:text-blue-300 transition-all"
+                      style={{
+                        background:'rgba(96,165,250,0.08)', border:'1px solid rgba(96,165,250,0.2)',
+                        borderRadius:18, padding:'7px 14px', whiteSpace:'nowrap'
+                      }}>
+                      {r}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {isComplete&&!confirmed && (
                 <div className="mt-4 animate-slide-up">
                   <button onClick={handleConfirm} disabled={confirming} className="btn-primary flex items-center justify-center gap-2">

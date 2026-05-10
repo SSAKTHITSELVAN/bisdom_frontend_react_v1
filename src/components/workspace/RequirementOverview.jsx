@@ -28,7 +28,7 @@ function LeadCard({ lead, onClick }) {
           </div>
           <div>
             <div style={{ fontSize:13, fontWeight:600, color:'#fff' }}>Seller Agent #{lead.supplier_id}</div>
-            <div style={{ fontSize:10, color:'rgba(255,255,255,0.35)', marginTop:1 }}>Round {lead.negotiation_round}/{lead.max_negotiation_rounds}</div>
+            <div style={{ fontSize:10, color:'rgba(255,255,255,0.35)', marginTop:1 }}>Round {lead.negotiation_round || 0}{lead.max_negotiation_rounds && lead.max_negotiation_rounds < 900 ? `/${lead.max_negotiation_rounds}` : ''}</div>
           </div>
         </div>
         <StatusBadge status={lead.status}/>
@@ -111,7 +111,7 @@ export default function RequirementOverview({ req, leads = [] }) {
             <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' }}>
               <span style={{ fontSize:12, color:'rgba(255,255,255,0.5)' }}>{req.quantity} {req.quantity_unit||'units'}</span>
               <span style={{ color:'rgba(255,255,255,0.2)' }}>·</span>
-              <span style={{ fontSize:12, color:'rgba(255,255,255,0.5)' }}>Budget ₹{req.budget_max?.toLocaleString()}</span>
+              <span style={{ fontSize:12, color:'rgba(255,255,255,0.5)' }}>{req.budget_max ? `Budget ₹${req.budget_max.toLocaleString()}` : 'Budget flexible'}</span>
               {req.delivery_location && <>
                 <span style={{ color:'rgba(255,255,255,0.2)' }}>·</span>
                 <span style={{ fontSize:12, color:'rgba(255,255,255,0.5)' }}>{req.delivery_location}</span>

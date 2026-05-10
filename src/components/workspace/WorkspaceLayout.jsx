@@ -37,6 +37,8 @@ export default function WorkspaceLayout() {
       setLoading(false)
     }
     load()
+    const interval = setInterval(load, 15000)
+    return () => clearInterval(interval)
   }, [refreshKey])
 
   const leadsByRequirement = buyerLeads.reduce((acc, lead) => {

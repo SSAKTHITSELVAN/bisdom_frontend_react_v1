@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { chatRequirement, confirmRequirement } from '@/api/requirements'
 import { useWorkspaceStore } from '@/store/workspaceStore'
 import { Send, Sparkles, CheckCircle, X } from 'lucide-react'
@@ -10,6 +10,32 @@ const SUGGESTIONS = [
   '200 cotton t-shirts, 100% cotton 180GSM, black, sizes S-XL, Tirupur, under ₹200/piece',
   '50 industrial electric motors, 2HP 3-phase, Coimbatore, delivery in 10 days',
 ]
+
+function getQuickReplies(lastAiMsg) {
+  if (!lastAiMsg) return []
+  const lower = lastAiMsg.toLowerCase()
+  if (lower.includes('budget') || lower.includes('price') || lower.includes('willing to pay'))
+    return ['Under ₹100/piece', 'Under ₹200/piece', 'Under ₹500/piece', 'No budget limit']
+  if (lower.includes('material') || lower.includes('fabric'))
+    return ['Cotton', 'Polyester', 'Cotton-poly blend', 'No preference']
+  if (lower.includes('color') || lower.includes('colour'))
+    return ['White', 'Black', 'Navy blue', 'No preference']
+  if (lower.includes('size'))
+    return ['S, M, L, XL', 'Free size', 'Mixed sizes', 'Not sure']
+  if (lower.includes('deliver') || lower.includes('location') || lower.includes('city') || lower.includes('where'))
+    return ['Mumbai', 'Delhi', 'Chennai', 'Bangalore']
+  if (lower.includes('how soon') || lower.includes('deadline') || lower.includes('days') || lower.includes('when'))
+    return ['7 days', '15 days', '30 days', 'No rush']
+  if (lower.includes('one-time') || lower.includes('recurring') || lower.includes('order type') || lower.includes('repeat'))
+    return ['One-time', 'Monthly recurring', 'Quarterly']
+  if (lower.includes('packaging'))
+    return ['Standard', 'Custom branded', 'Bulk packaging', 'No preference']
+  if (lower.includes('confirm') || lower.includes('look correct') || lower.includes('everything look'))
+    return ['Yes, confirm', 'Change budget', 'Change quantity']
+  if (lower.includes('anything else') || lower.includes('additional'))
+    return ['That\'s all, post it', 'Need GST invoice', 'Need sample first']
+  return []
+}
 
 function Bubble({ msg }) {
   const isUser   = msg.role === 'user'
@@ -52,6 +78,12 @@ export default function NewRequirementChat() {
   const inputRef  = useRef(null)
   const { goWelcome, goRequirement, triggerRefresh } = useWorkspaceStore()
 
+  const quickReplies = useMemo(() => {
+    if (loading || isComplete) return []
+    const lastAi = [...messages].reverse().find(m => m.role === 'ai')
+    return getQuickReplies(lastAi?.content)
+  }, [messages, loading, isComplete])
+
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:'smooth' }) }, [messages, loading])
 
   const send = async (text) => {
@@ -67,9 +99,10 @@ export default function NewRequirementChat() {
       setIsComplete(is_complete)
       setMessages(p => [...p, { role:'ai', content: ai_response }])
       if (is_complete && requirement_summary) {
+        const budgetText = requirement_summary.budget_max ? `₹${requirement_summary.budget_max} max` : 'Budget flexible'
         setMessages(p => [...p, {
           role:'system',
-          content:`📋 ${requirement_summary.product} · ${requirement_summary.quantity} ${requirement_summary.quantity_unit||'units'} · ₹${requirement_summary.budget_max} max`
+          content:`📋 ${requirement_summary.product} · ${requirement_summary.quantity} ${requirement_summary.quantity_unit||'units'} · ${budgetText}`
         }])
       }
     } catch { toast.error('Something went wrong') }
@@ -84,8 +117,7 @@ export default function NewRequirementChat() {
       setMessages(p => [...p, { role:'system', content:'🤖 AI agents are now matching suppliers and starting negotiations. Check the sidebar for updates.' }])
       triggerRefresh()
       setTimeout(() => {
-        goWelcome()
-        setSelectedRequirement(reqId)
+        goRequirement(reqId)
       }, 2000)
     } catch { toast.error('Failed to confirm') }
     finally { setConfirming(false) }
@@ -150,6 +182,23 @@ export default function NewRequirementChat() {
               <div className="bubble-ai" style={{ display:'flex', gap:5, alignItems:'center', padding:'12px 16px' }}>
                 <div className="typing-dot"/><div className="typing-dot"/><div className="typing-dot"/>
               </div>
+            </div>
+          )}
+
+          {quickReplies.length > 0 && !loading && (
+            <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginTop:8, marginBottom:8 }} className="fade-in">
+              {quickReplies.map((r, i) => (
+                <button key={i} onClick={() => send(r)}
+                  style={{
+                    background:'rgba(96,165,250,0.08)', border:'1px solid rgba(96,165,250,0.2)',
+                    borderRadius:18, padding:'7px 14px', color:'#60a5fa', fontSize:12,
+                    cursor:'pointer', fontFamily:'Montserrat,sans-serif', fontWeight:500,
+                    transition:'all 0.15s', whiteSpace:'nowrap'
+                  }}
+                  onMouseEnter={e => { e.target.style.background='rgba(96,165,250,0.18)'; e.target.style.borderColor='rgba(96,165,250,0.4)' }}
+                  onMouseLeave={e => { e.target.style.background='rgba(96,165,250,0.08)'; e.target.style.borderColor='rgba(96,165,250,0.2)' }}
+                >{r}</button>
+              ))}
             </div>
           )}
 
