@@ -25,3 +25,4 @@ EOF
 
 curl -X POST https://api.bizzap.app/api/v1/admin/fix-profiles
 curl -X POST https://api.bizzap.app/api/v1/admin/rematch/YOUR_REQUIREMENT_ID
+

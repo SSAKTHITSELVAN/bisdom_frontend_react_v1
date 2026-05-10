@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { profileStatus } from '../../api/onboarding'
+import { getDashboard } from '../../api/dashboard'
 import { useAuthStore } from '../../store/authStore'
 import PageLayout from '../ui/PageLayout'
 import Spinner from '../ui/Spinner'
@@ -11,8 +11,8 @@ export default function ProfilePage() {
   const { logout, user } = useAuthStore()
 
   useEffect(() => {
-    profileStatus()
-      .then(r => setProfile(r.data))
+    getDashboard()
+      .then(r => setProfile(r.data.profile))
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
